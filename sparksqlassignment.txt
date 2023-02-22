@@ -1,0 +1,88 @@
+package com.virtualpairprogrammers;
+
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.expressions.Window;
+import org.apache.spark.sql.expressions.WindowSpec;
+import org.apache.spark.sql.types.DataTypes;
+
+import static org.apache.spark.sql.functions.*;
+
+
+
+public class SparkSqlAssignment {
+	
+	@SuppressWarnings("resource")
+	public static void main(String[] args) {
+	
+		Logger.getLogger("org.apache").setLevel(Level.WARN);
+		SparkSession spark =SparkSession.builder().appName("testingsql").master("local[*]")
+							.config("spark.sql.warehouse.dir","file:///c:/temp/")
+							.getOrCreate();
+		
+		Dataset<Row> dataset= spark.read().option("header",true).csv("src/main/resources/exams/News_final.csv");
+		
+		dataset.createOrReplaceTempView("Newsdatatable");
+		
+		
+		Dataset<Row> results = spark.sql("select IDLink, length(Title) as columnlen from Newsdatatable where length(Title) < 12 " );
+		
+
+		//results.coalesce(1).write().csv("D:\\User Space\\SqlAssignment\\Rule1_reject_log.csv");
+		
+		Dataset<Row> data = spark.sql("select IDLink, Topic from  Newsdatatable where Topic NOT IN ('obama','economy','microsoft','palestine') ");
+		
+		//data.coalesce(1).write().csv("D:\\User Space\\SqlAssignment\\Rule2_reject_log.csv");
+		
+		
+		Dataset<Row> Newscleansed = spark.sql("select * from Newsdatatable where length(Title) >= 12 AND Topic IN ('obama','economy','microsoft','palestine')");
+		
+		//Newscleansed.coalesce(1).write().csv("D:\\User Space\\SqlAssignment\\News_cleansed.csv");
+		System.out.println( Newscleansed.count());
+		
+		Newscleansed.createOrReplaceTempView("cleanedTable");
+		//data.show();
+		
+		//a.Total number of records in the original file
+
+		Dataset<Row> originalcount =  spark.sql("select Title from Newsdatatable");
+		System.out.println("Total number of records in the original file is \t:" + originalcount.count());
+		
+		//b.Total number of records after applying business rules
+
+		System.out.println("Total number of records after applying business rules is \t:" +  Newscleansed.count());
+		
+		//c.Year-wise average Sentiment score of the text in the news items' headline for each topic
+		System.out.println("Year-wise average Sentiment score of the text in the news items' headline for each topic");
+		Dataset<Row> avgsentscore = spark.sql("select Topic, avg( SentimentHeadline) as AvgSentimentScore, date_format(PublishDate,'yyyy') as Year from cleanedTable group by Topic, date_format(PublishDate,'yyyy')");
+		avgsentscore.show();
+		
+		//d. Year-wise average Sentiment score of the text in the news items' title for each topic
+		System.out.println("Year-wise average Sentiment score of the text in the news items' title for each topic");
+		Dataset<Row> avgsenttitlescore = spark.sql("select Topic, avg( SentimentTitle) as AvgSentimentScore, date_format(PublishDate,'yyyy') as Year from cleanedTable group by Topic, date_format(PublishDate,'yyyy')");
+		avgsenttitlescore.show();
+		
+		//e. Top 10 most popular items by average Final value of the news items' popularity on Facebook,
+		//GooglePlus, LinkedIn
+		
+		Dataset<Row> pscore_df = spark.sql("select IDLink,((Facebook + GooglePlus + LinkedIn)/3) as average_final_popularity_value from cleanedTable ").toDF();
+		WindowSpec window = Window.orderBy(desc("average_final_popularity_value"));
+		Dataset<Row> rank_df = pscore_df.withColumn("rank", rank().over(window));
+		System.out.println("Top 10 most popular items by average Final value of the news items' popularity on Facebook, GooglePlus, LinkedIn");
+		rank_df.show(10);
+		
+		//5. Save the SOCIAL FEEDBACK DATA from GooglePlus as well as Facebook for the topic ‘economy’ for the
+		//news published in 2015 
+		
+		Dataset<Row> Feedbackdata = spark.sql("select Facebook , GooglePlus, Topic from cleanedTable where Topic = 'economy' AND  date_format(PublishDate , 'yyyy') = 2015 ");
+		
+		//Feedbackdata.show();
+		spark.close();
+		
+	 	}
+
+
+}
