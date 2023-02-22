@@ -1,6 +1,7 @@
 # Spark_SQL
 
 Name of project : Spark Sql Project
+
 Overview : 
 The data files about news items and their respective social feedback on platforms are present in “data” folder.
 The information about these files is provided in the file readme.txt
